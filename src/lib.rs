@@ -9,3 +9,13 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 #[macro_use]
 mod avutil;
 pub use avutil::*;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_init() {
+        unsafe {
+            ::avfilter_register_all();
+        }
+    }
+}
