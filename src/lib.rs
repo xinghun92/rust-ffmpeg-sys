@@ -10,8 +10,46 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 mod avutil;
 pub use avutil::*;
 
+#[cfg(features = "runnable")]
+extern "C" {
+    #[link_name = "\u{1}_run"]
+    pub fn run(
+        argc: ::std::os::raw::c_int,
+        argv: *mut *mut ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn test_run() {
+        #[cfg(features = "runnable")]
+        {
+            use std::str::FromStr;
+            use std::os::raw::c_char;
+
+            let args = vec!["ffmpeg", "-i", "/Users/wangsijie/Downloads/IMG_0431.MOV", "-b:v", "400k", "-s", "540x960", "/Users/wangsijie/Downloads/New_IMG_0431.MOV"];
+            let argc = args.len() as ::std::os::raw::c_int;
+
+            let mut c_args = Vec::new();
+            let mut c_args_hold = Vec::new();
+            for arg in args {
+                let mut c_chars = arg.to_string().into_bytes();
+                c_chars.push('\0' as u8);
+
+                println!("push: {:?}", String::from_utf8_lossy(&c_chars));
+                let mut c_chars: Vec<_> = c_chars.into_iter().map(|b| b as c_char).collect();
+                c_args.push(c_chars.as_mut_ptr());
+                c_args_hold.push(c_chars);
+            }
+
+            unsafe {
+                ::run(argc, c_args.as_mut_ptr());
+            }
+        }
+    }
+
     #[test]
     fn test_init() {
         unsafe {

@@ -27,6 +27,7 @@ default  = ["avcodec", "avdevice", "avfilter", "avformat", "avresample", "swresa
 static = []
 build  = ["static"]
 buildtime-bindgen = ["static"]
+runnable = ["static"]
 
 # licensing
 build-license-gpl      = ["build"]

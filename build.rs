@@ -7,7 +7,7 @@ extern crate regex;
 use std::env;
 use std::fs::{self, create_dir, symlink_metadata, File};
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str;
 
@@ -434,6 +434,7 @@ fn search_include(include_paths: &Vec<PathBuf>, header: &str) -> String {
 
 fn main() {
     let statik = env::var("CARGO_FEATURE_STATIC").is_ok();
+    let target = env::var("TARGET").unwrap();
 
     let include_paths: Vec<PathBuf> = if env::var("CARGO_FEATURE_BUILD").is_ok() {
         println!(
@@ -467,7 +468,7 @@ fn main() {
             println!("cargo:rustc-link-lib={}=swresample", ffmpeg_ty);
         }
 
-        if cfg!(target_os = "linux") {
+        if target.contains("linux") {
             println!("cargo:rustc-link-lib=z");
         }
 
@@ -537,11 +538,11 @@ fn main() {
             println!("cargo:rustc-link-lib={}=swresample", ffmpeg_ty);
         }
 
-        if env::var("CARGO_FEATURE_BUILD_ZLIB").is_ok() || cfg!(target_os = "linux") {
+        if env::var("CARGO_FEATURE_BUILD_ZLIB").is_ok() || target.contains("linux") {
             println!("cargo:rustc-link-lib=z");
         }
 
-        if cfg!(target_os = "macos") {
+        if target.contains("macos") {
             println!("cargo:rustc-link-lib=iconv");
             println!("cargo:rustc-link-lib=m");
             println!("cargo:rustc-link-lib=lzma");
@@ -549,7 +550,7 @@ fn main() {
             println!("cargo:rustc-link-lib=z");
         }
 
-        if cfg!(target_os = "windows") {
+        if target.contains("windows") {
             println!("cargo:rustc-link-lib=ole32");
             println!("cargo:rustc-link-lib=user32");
             println!("cargo:rustc-link-lib=psapi");
@@ -563,12 +564,12 @@ fn main() {
             println!("cargo:rustc-link-lib=ws2_32");
             println!("cargo:rustc-link-lib=shell32");
 
-            if cfg!(target_env = "gnu") {
+            if target.contains("gnu") {
                 println!("cargo:rustc-link-lib=m");
                 println!("cargo:rustc-link-lib=advapi32");
             }
 
-            if cfg!(target_env = "msvc") {
+            if target.contains("msvc") {
                 println!("cargo:rustc-link-lib=bcrypt");
             }
         }
@@ -619,7 +620,7 @@ fn main() {
             .include_paths
     };
 
-    if statik && cfg!(target_os = "macos") {
+    if statik && target.contains("macos") {
         let frameworks = vec![
             "AppKit",
             "AudioToolbox",
@@ -641,6 +642,10 @@ fn main() {
         for f in frameworks {
             println!("cargo:rustc-link-lib=framework={}", f);
         }
+    }
+
+    if env::var("CARGO_FEATURE_RUNNABLE").is_ok() {
+        build_runnable();
     }
 
     check_features(
@@ -1095,4 +1100,31 @@ fn main() {
         fs::copy(bundled_file, output().join("bindings.rs"))
                 .expect("Could not copy bindings to output directory");
     }
+}
+
+pub fn build_runnable() {
+    let mut builder = cc::Build::new();
+    let target = env::var("TARGET").unwrap();
+
+    const TARGET_DIR: &str = "ffmpeg_prebuilt";
+    let target_dir = Path::new(TARGET_DIR);
+    let target_path = if target.contains("macos") {
+        target_dir.join("mac")
+    } else if target.contains("linux") {
+        target_dir.join("linux")
+    } else if target.contains("windows") && target.contains("gnu") && target.contains("i686") {
+        target_dir.join("gnu32")
+    } else {
+        panic!("Unsupport target");
+    };
+
+    const SOURCE_DIR: &str = "ffmpeg_run";
+    let source_dir = Path::new(SOURCE_DIR);
+    builder.include("FFmpeg")
+        .include(target_path)
+        .file(source_dir.join("cmdutils.c"))
+        .file(source_dir.join("ffmpeg.c"))
+        .file(source_dir.join("ffmpeg_filter.c"))
+        .file(source_dir.join("ffmpeg_opt.c"))
+        .compile("ffmpeg");
 }
