@@ -1114,6 +1114,8 @@ pub fn build_runnable() {
         target_dir.join("linux")
     } else if target.contains("windows") && target.contains("gnu") && target.contains("i686") {
         target_dir.join("gnu32")
+    } else if target.contains("windows") && target.contains("gnu") && target.contains("i686") {
+        target_dir.join("msvc32")
     } else {
         panic!("Unsupport target");
     };
