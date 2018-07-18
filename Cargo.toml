@@ -99,3 +99,6 @@ avresample = []
 postproc   = []
 swresample = []
 swscale    = []
+
+[lib]
+crate-type = ['staticlib', 'cdylib']

@@ -614,7 +614,7 @@ extern int stdin_interaction;
 extern int frame_bits_per_raw_sample;
 extern AVIOContext *progress_avio;
 extern float max_error_rate;
-extern char *videotoolbox_pixfmt;
+//extern char *videotoolbox_pixfmt;
 
 extern int filter_nbthreads;
 extern int filter_complex_nbthreads;
@@ -663,7 +663,7 @@ int ifilter_parameters_from_frame(InputFilter *ifilter, const AVFrame *frame);
 int ffmpeg_parse_options(int argc, char **argv);
 
 int vda_init(AVCodecContext *s);
-int videotoolbox_init(AVCodecContext *s);
+//int videotoolbox_init(AVCodecContext *s);
 int qsv_init(AVCodecContext *s);
 int cuvid_init(AVCodecContext *s);
 

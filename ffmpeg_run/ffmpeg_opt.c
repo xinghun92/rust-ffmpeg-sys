@@ -79,12 +79,12 @@ const HWAccel hwaccels[] = {
       AV_HWDEVICE_TYPE_DXVA2 },
 #endif
 #if CONFIG_VDA
-    { "vda",   videotoolbox_init,   HWACCEL_VDA,   AV_PIX_FMT_VDA,
-      AV_HWDEVICE_TYPE_NONE },
+//    { "vda",   videotoolbox_init,   HWACCEL_VDA,   AV_PIX_FMT_VDA,
+//      AV_HWDEVICE_TYPE_NONE },
 #endif
 #if CONFIG_VIDEOTOOLBOX
-    { "videotoolbox",   videotoolbox_init,   HWACCEL_VIDEOTOOLBOX,   AV_PIX_FMT_VIDEOTOOLBOX,
-      AV_HWDEVICE_TYPE_NONE },
+//    { "videotoolbox",   videotoolbox_init,   HWACCEL_VIDEOTOOLBOX,   AV_PIX_FMT_VIDEOTOOLBOX,
+//      AV_HWDEVICE_TYPE_NONE },
 #endif
 #if CONFIG_LIBMFX
     { "qsv",   qsv_init,   HWACCEL_QSV,   AV_PIX_FMT_QSV,
@@ -3633,7 +3633,7 @@ const OptionDef options[] = {
                           OPT_SPEC | OPT_INPUT,                                  { .off = OFFSET(hwaccel_output_formats) },
         "select output format used with HW accelerated decoding", "format" },
 #if CONFIG_VDA || CONFIG_VIDEOTOOLBOX
-    { "videotoolbox_pixfmt", HAS_ARG | OPT_STRING | OPT_EXPERT, { &videotoolbox_pixfmt}, "" },
+    //{ "videotoolbox_pixfmt", HAS_ARG | OPT_STRING | OPT_EXPERT, { &videotoolbox_pixfmt}, "" },
 #endif
     { "hwaccels",         OPT_EXIT,                                              { .func_arg = show_hwaccels },
         "show available HW acceleration methods" },

@@ -343,7 +343,9 @@ fn check_features(
     ).expect("Write failed");
 
     let executable = out_dir.join(if cfg!(windows) { "check.exe" } else { "check" });
-    let mut compiler = cc::Build::new().get_compiler().to_command();
+    let host = env::var("HOST").unwrap();
+    // build host executable file
+    let mut compiler = cc::Build::new().target(&host).get_compiler().to_command();
 
     for dir in include_paths {
         compiler.arg("-I");
@@ -378,7 +380,7 @@ fn check_features(
         }
 
         let var_str = format!("[{var}]", var = var);
-        let pos = stdout.find(&var_str).expect("Variable not found in output") + var_str.len();
+        let pos = stdout.find(&var_str).expect(&format!("Variable not found in output: {:?}", var_str)) + var_str.len();
         if &stdout[pos..pos + 1] == "1" {
             println!(r#"cargo:rustc-cfg=feature="{}""#, var.to_lowercase());
             println!(r#"cargo:{}=true"#, var.to_lowercase());
@@ -542,7 +544,7 @@ fn main() {
             println!("cargo:rustc-link-lib=z");
         }
 
-        if target.contains("macos") {
+        if target.contains("darwin") {
             println!("cargo:rustc-link-lib=iconv");
             println!("cargo:rustc-link-lib=m");
             println!("cargo:rustc-link-lib=lzma");
@@ -572,6 +574,12 @@ fn main() {
             if target.contains("msvc") {
                 println!("cargo:rustc-link-lib=bcrypt");
             }
+        }
+
+        if target.contains("android") {
+            println!("cargo:rustc-link-lib=m");
+            println!("cargo:rustc-link-lib=z");
+            println!("cargo:rustc-link-lib=pthread");
         }
 
         vec![ffmpeg_dir.join("include")]
@@ -620,7 +628,7 @@ fn main() {
             .include_paths
     };
 
-    if statik && target.contains("macos") {
+    if statik && target.contains("darwin") {
         let frameworks = vec![
             "AppKit",
             "AudioToolbox",
@@ -1108,7 +1116,7 @@ pub fn build_runnable() {
 
     const TARGET_DIR: &str = "ffmpeg_prebuilt";
     let target_dir = Path::new(TARGET_DIR);
-    let target_path = if target.contains("macos") {
+    let target_path = if target.contains("darwin") {
         target_dir.join("mac")
     } else if target.contains("linux") {
         target_dir.join("linux")
