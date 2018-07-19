@@ -343,7 +343,9 @@ fn check_features(
     ).expect("Write failed");
 
     let executable = out_dir.join(if cfg!(windows) { "check.exe" } else { "check" });
-    let mut compiler = cc::Build::new().get_compiler().to_command();
+    let host = env::var("HOST").unwrap();
+    // build host executable file
+    let mut compiler = cc::Build::new().target(&host).get_compiler().to_command();
 
     for dir in include_paths {
         compiler.arg("-I");
@@ -434,82 +436,17 @@ fn search_include(include_paths: &Vec<PathBuf>, header: &str) -> String {
 
 fn main() {
     let statik = env::var("CARGO_FEATURE_STATIC").is_ok();
+    let target = env::var("TARGET").unwrap();
 
     let include_paths: Vec<PathBuf> = if env::var("CARGO_FEATURE_BUILD").is_ok() {
-        println!(
-            "cargo:rustc-link-search=native={}",
-            search().join("lib").to_string_lossy()
-        );
-
-        let ffmpeg_ty = if statik { "static" } else { "dylib" };
-
-        // Make sure to link with the ffmpeg libs we built
-        println!("cargo:rustc-link-lib={}=avutil", ffmpeg_ty);
-        if env::var("CARGO_FEATURE_AVCODEC").is_ok() {
-            println!("cargo:rustc-link-lib={}=avcodec", ffmpeg_ty);
-        }
-        if env::var("CARGO_FEATURE_AVFORMAT").is_ok() {
-            println!("cargo:rustc-link-lib={}=avformat", ffmpeg_ty);
-        }
-        if env::var("CARGO_FEATURE_AVFILTER").is_ok() {
-            println!("cargo:rustc-link-lib={}=avfilter", ffmpeg_ty);
-        }
-        if env::var("CARGO_FEATURE_AVDEVICE").is_ok() {
-            println!("cargo:rustc-link-lib={}=avdevice", ffmpeg_ty);
-        }
-        if env::var("CARGO_FEATURE_AVRESAMPLE").is_ok() {
-            println!("cargo:rustc-link-lib={}=avresample", ffmpeg_ty);
-        }
-        if env::var("CARGO_FEATURE_SWSCALE").is_ok() {
-            println!("cargo:rustc-link-lib={}=swscale", ffmpeg_ty);
-        }
-        if env::var("CARGO_FEATURE_SWRESAMPLE").is_ok() {
-            println!("cargo:rustc-link-lib={}=swresample", ffmpeg_ty);
-        }
-
-        if env::var("CARGO_FEATURE_BUILD_ZLIB").is_ok() && cfg!(target_os = "linux") {
-            println!("cargo:rustc-link-lib=z");
-        }
-
-        if fs::metadata(&search().join("lib").join("libavutil.a")).is_err() {
-            fs::create_dir_all(&output())
-                .ok()
-                .expect("failed to create build directory");
-            fetch().unwrap();
-            build().unwrap();
-        }
-
-        // Check additional required libraries.
-        {
-            let config_mak = source().join("ffbuild/config.mak");
-            let file = File::open(config_mak).unwrap();
-            let reader = BufReader::new(file);
-            let extra_libs = reader
-                .lines()
-                .find(|ref line| line.as_ref().unwrap().starts_with("EXTRALIBS"))
-                .map(|line| line.unwrap())
-                .unwrap();
-
-            let linker_args = extra_libs.split('=').last().unwrap().split(' ');
-            let include_libs = linker_args
-                .filter(|v| v.starts_with("-l"))
-                .map(|flag| &flag[2..]);
-
-            for lib in include_libs {
-                println!("cargo:rustc-link-lib={}", lib);
-            }
-        }
+        link_ffmpeg(&search());
 
         vec![search().join("include")]
     }
     // Use prebuilt library
     else if let Ok(ffmpeg_dir) = env::var("FFMPEG_DIR") {
-        let ffmpeg_dir = PathBuf::from(ffmpeg_dir);
-
-        println!(
-            "cargo:rustc-link-search=native={}",
-            ffmpeg_dir.join("lib").to_string_lossy()
-        );
+        let ffmpeg_dir = PathBuf::from(&ffmpeg_dir);
+        link_ffmpeg(&ffmpeg_dir);
 
         vec![ffmpeg_dir.join("include")]
     }
@@ -557,7 +494,7 @@ fn main() {
             .include_paths
     };
 
-    if statik && cfg!(target_os = "macos") {
+    if statik && target.contains("darwin") {
         let frameworks = vec![
             "AppKit",
             "AudioToolbox",
@@ -884,146 +821,226 @@ fn main() {
         ],
     );
 
-    let tmp = std::env::current_dir().unwrap().join("tmp");
-    if symlink_metadata(&tmp).is_err() {
-        create_dir(&tmp).expect("Failed to create temporary output dir");
-    }
-    let mut f = File::create(tmp.join(".build")).expect("Filed to create .build");
-    let tool = cc::Build::new().get_compiler();
-    write!(f, "{}", tool.path().to_string_lossy().into_owned()).expect("failed to write cmd");
-    for arg in tool.args() {
-        write!(f, " {}", arg.to_str().unwrap()).expect("failed to write arg");
-    }
-    for dir in &include_paths {
-        write!(f, " -I {}", dir.to_string_lossy().into_owned()).expect("failed to write incdir");
-    }
-    let clang_includes = include_paths
-        .iter()
-        .map(|include| format!("-I{}", include.to_string_lossy()));
+    if env::var("CARGO_FEATURE_BUILDTIME_BINDGEN").is_ok() {
+        let tmp = std::env::current_dir().unwrap().join("tmp");
+        if symlink_metadata(&tmp).is_err() {
+            create_dir(&tmp).expect("Failed to create temporary output dir");
+        }
+        let mut f = File::create(tmp.join(".build")).expect("Filed to create .build");
+        let tool = cc::Build::new().get_compiler();
+        write!(f, "{}", tool.path().to_string_lossy().into_owned()).expect("failed to write cmd");
+        for arg in tool.args() {
+            write!(f, " {}", arg.to_str().unwrap()).expect("failed to write arg");
+        }
+        for dir in &include_paths {
+            write!(f, " -I {}", dir.to_string_lossy().into_owned()).expect("failed to write incdir");
+        }
+        let clang_includes = include_paths
+            .iter()
+            .map(|include| format!("-I{}", include.to_string_lossy()));
 
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
-    let mut builder = bindgen::Builder::default()
-        .clang_args(clang_includes)
-        .ctypes_prefix("libc")
-        // https://github.com/servo/rust-bindgen/issues/687
-        .blacklist_type("FP_NAN")
-        .blacklist_type("FP_INFINITE")
-        .blacklist_type("FP_ZERO")
-        .blacklist_type("FP_SUBNORMAL")
-        .blacklist_type("FP_NORMAL")
-        // https://github.com/servo/rust-bindgen/issues/550
-        .blacklist_type("max_align_t")
-        .rustified_enum("*")
-        .prepend_enum_name(false)
-        .derive_eq(true)
-        .parse_callbacks(Box::new(IntCallbacks));
+        //  The bindgen::Builder is the main entry point
+        //  to bindgen, and lets you build up options for
+        //  the resulting bindings.
+        let mut builder = bindgen::Builder::default()
+            .clang_args(clang_includes)
+            .ctypes_prefix("libc")
+            // https://github.com/servo/rust-bindgen/issues/687
+            .blacklist_type("FP_NAN")
+            .blacklist_type("FP_INFINITE")
+            .blacklist_type("FP_ZERO")
+            .blacklist_type("FP_SUBNORMAL")
+            .blacklist_type("FP_NORMAL")
+            // https://github.com/servo/rust-bindgen/issues/550
+            .blacklist_type("max_align_t")
+            .rustified_enum("*")
+            .prepend_enum_name(false)
+            .derive_eq(true)
+            .trust_clang_mangling(false)
+            .parse_callbacks(Box::new(IntCallbacks));
 
-    // The input headers we would like to generate
-    // bindings for.
+        // The input headers we would like to generate
+        // bindings for.
+        if env::var("CARGO_FEATURE_AVCODEC").is_ok() {
+            builder = builder
+                .header(search_include(&include_paths, "libavcodec/avcodec.h"))
+                .header(search_include(&include_paths, "libavcodec/dv_profile.h"))
+                .header(search_include(&include_paths, "libavcodec/avfft.h"))
+                .header(search_include(&include_paths, "libavcodec/vaapi.h"))
+                .header(search_include(&include_paths, "libavcodec/vorbis_parser.h"));
+        }
+
+        if env::var("CARGO_FEATURE_AVDEVICE").is_ok() {
+            builder = builder.header(search_include(&include_paths, "libavdevice/avdevice.h"));
+        }
+
+        if env::var("CARGO_FEATURE_AVFILTER").is_ok() {
+            builder = builder
+                .header(search_include(&include_paths, "libavfilter/buffersink.h"))
+                .header(search_include(&include_paths, "libavfilter/buffersrc.h"))
+                .header(search_include(&include_paths, "libavfilter/avfilter.h"));
+        }
+
+        if env::var("CARGO_FEATURE_AVFORMAT").is_ok() {
+            builder = builder
+                .header(search_include(&include_paths, "libavformat/avformat.h"))
+                .header(search_include(&include_paths, "libavformat/avio.h"));
+        }
+
+        if env::var("CARGO_FEATURE_AVRESAMPLE").is_ok() {
+            builder = builder.header(search_include(&include_paths, "libavresample/avresample.h"));
+        }
+
+        builder = builder
+            .header(search_include(&include_paths, "libavutil/adler32.h"))
+            .header(search_include(&include_paths, "libavutil/aes.h"))
+            .header(search_include(&include_paths, "libavutil/audio_fifo.h"))
+            .header(search_include(&include_paths, "libavutil/base64.h"))
+            .header(search_include(&include_paths, "libavutil/blowfish.h"))
+            .header(search_include(&include_paths, "libavutil/bprint.h"))
+            .header(search_include(&include_paths, "libavutil/buffer.h"))
+            .header(search_include(&include_paths, "libavutil/camellia.h"))
+            .header(search_include(&include_paths, "libavutil/cast5.h"))
+            .header(search_include(&include_paths, "libavutil/channel_layout.h"))
+            .header(search_include(&include_paths, "libavutil/cpu.h"))
+            .header(search_include(&include_paths, "libavutil/crc.h"))
+            .header(search_include(&include_paths, "libavutil/dict.h"))
+            .header(search_include(&include_paths, "libavutil/display.h"))
+            .header(search_include(&include_paths, "libavutil/downmix_info.h"))
+            .header(search_include(&include_paths, "libavutil/error.h"))
+            .header(search_include(&include_paths, "libavutil/eval.h"))
+            .header(search_include(&include_paths, "libavutil/fifo.h"))
+            .header(search_include(&include_paths, "libavutil/file.h"))
+            .header(search_include(&include_paths, "libavutil/frame.h"))
+            .header(search_include(&include_paths, "libavutil/hash.h"))
+            .header(search_include(&include_paths, "libavutil/hmac.h"))
+            .header(search_include(&include_paths, "libavutil/imgutils.h"))
+            .header(search_include(&include_paths, "libavutil/lfg.h"))
+            .header(search_include(&include_paths, "libavutil/log.h"))
+            .header(search_include(&include_paths, "libavutil/lzo.h"))
+            .header(search_include(&include_paths, "libavutil/macros.h"))
+            .header(search_include(&include_paths, "libavutil/mathematics.h"))
+            .header(search_include(&include_paths, "libavutil/md5.h"))
+            .header(search_include(&include_paths, "libavutil/mem.h"))
+            .header(search_include(&include_paths, "libavutil/motion_vector.h"))
+            .header(search_include(&include_paths, "libavutil/murmur3.h"))
+            .header(search_include(&include_paths, "libavutil/opt.h"))
+            .header(search_include(&include_paths, "libavutil/parseutils.h"))
+            .header(search_include(&include_paths, "libavutil/pixdesc.h"))
+            .header(search_include(&include_paths, "libavutil/pixfmt.h"))
+            .header(search_include(&include_paths, "libavutil/random_seed.h"))
+            .header(search_include(&include_paths, "libavutil/rational.h"))
+            .header(search_include(&include_paths, "libavutil/replaygain.h"))
+            .header(search_include(&include_paths, "libavutil/ripemd.h"))
+            .header(search_include(&include_paths, "libavutil/samplefmt.h"))
+            .header(search_include(&include_paths, "libavutil/sha.h"))
+            .header(search_include(&include_paths, "libavutil/sha512.h"))
+            .header(search_include(&include_paths, "libavutil/stereo3d.h"))
+            .header(search_include(&include_paths, "libavutil/avstring.h"))
+            .header(search_include(&include_paths, "libavutil/threadmessage.h"))
+            .header(search_include(&include_paths, "libavutil/time.h"))
+            .header(search_include(&include_paths, "libavutil/timecode.h"))
+            .header(search_include(&include_paths, "libavutil/twofish.h"))
+            .header(search_include(&include_paths, "libavutil/avutil.h"))
+            .header(search_include(&include_paths, "libavutil/xtea.h"));
+
+        if env::var("CARGO_FEATURE_POSTPROC").is_ok() {
+            builder = builder.header(search_include(&include_paths, "libpostproc/postprocess.h"));
+        }
+
+        if env::var("CARGO_FEATURE_SWRESAMPLE").is_ok() {
+            builder = builder.header(search_include(&include_paths, "libswresample/swresample.h"));
+        }
+
+        if env::var("CARGO_FEATURE_SWSCALE").is_ok() {
+            builder = builder.header(search_include(&include_paths, "libswscale/swscale.h"));
+        }
+
+        // Finish the builder and generate the bindings.
+        let bindings = builder.generate()
+        // Unwrap the Result and panic on failure.
+        .expect("Unable to generate bindings");
+
+        // Write the bindings to the $OUT_DIR/bindings.rs file.
+        bindings
+            .write_to_file(output().join("bindings.rs"))
+            .expect("Couldn't write bindings!");
+    } else {
+        let bundled_file = "bindings/bindings.rs";
+        fs::copy(bundled_file, output().join("bindings.rs"))
+                .expect("Could not copy bindings to output directory");
+    }
+}
+
+fn link_ffmpeg(lib_dir: &PathBuf) {
+    let statik = env::var("CARGO_FEATURE_STATIC").is_ok();
+    let target = env::var("TARGET").unwrap();
+
+    println!(
+        "cargo:rustc-link-search=native={}",
+        lib_dir.join("lib").to_string_lossy()
+    );
+
+    let ffmpeg_ty = if statik { "static" } else { "dylib" };
+
+    // Make sure to link with the ffmpeg libs we built
+    println!("cargo:rustc-link-lib={}=avutil", ffmpeg_ty);
     if env::var("CARGO_FEATURE_AVCODEC").is_ok() {
-        builder = builder
-            .header(search_include(&include_paths, "libavcodec/avcodec.h"))
-            .header(search_include(&include_paths, "libavcodec/dv_profile.h"))
-            .header(search_include(&include_paths, "libavcodec/avfft.h"))
-            .header(search_include(&include_paths, "libavcodec/vaapi.h"))
-            .header(search_include(&include_paths, "libavcodec/vorbis_parser.h"));
+        println!("cargo:rustc-link-lib={}=avcodec", ffmpeg_ty);
     }
-
-    if env::var("CARGO_FEATURE_AVDEVICE").is_ok() {
-        builder = builder.header(search_include(&include_paths, "libavdevice/avdevice.h"));
-    }
-
-    if env::var("CARGO_FEATURE_AVFILTER").is_ok() {
-        builder = builder
-            .header(search_include(&include_paths, "libavfilter/buffersink.h"))
-            .header(search_include(&include_paths, "libavfilter/buffersrc.h"))
-            .header(search_include(&include_paths, "libavfilter/avfilter.h"));
-    }
-
     if env::var("CARGO_FEATURE_AVFORMAT").is_ok() {
-        builder = builder
-            .header(search_include(&include_paths, "libavformat/avformat.h"))
-            .header(search_include(&include_paths, "libavformat/avio.h"));
+        println!("cargo:rustc-link-lib={}=avformat", ffmpeg_ty);
     }
-
+    if env::var("CARGO_FEATURE_AVFILTER").is_ok() {
+        println!("cargo:rustc-link-lib={}=avfilter", ffmpeg_ty);
+    }
+    if env::var("CARGO_FEATURE_AVDEVICE").is_ok() {
+        println!("cargo:rustc-link-lib={}=avdevice", ffmpeg_ty);
+    }
     if env::var("CARGO_FEATURE_AVRESAMPLE").is_ok() {
-        builder = builder.header(search_include(&include_paths, "libavresample/avresample.h"));
+        println!("cargo:rustc-link-lib={}=avresample", ffmpeg_ty);
     }
-
-    builder = builder
-        .header(search_include(&include_paths, "libavutil/adler32.h"))
-        .header(search_include(&include_paths, "libavutil/aes.h"))
-        .header(search_include(&include_paths, "libavutil/audio_fifo.h"))
-        .header(search_include(&include_paths, "libavutil/base64.h"))
-        .header(search_include(&include_paths, "libavutil/blowfish.h"))
-        .header(search_include(&include_paths, "libavutil/bprint.h"))
-        .header(search_include(&include_paths, "libavutil/buffer.h"))
-        .header(search_include(&include_paths, "libavutil/camellia.h"))
-        .header(search_include(&include_paths, "libavutil/cast5.h"))
-        .header(search_include(&include_paths, "libavutil/channel_layout.h"))
-        .header(search_include(&include_paths, "libavutil/cpu.h"))
-        .header(search_include(&include_paths, "libavutil/crc.h"))
-        .header(search_include(&include_paths, "libavutil/dict.h"))
-        .header(search_include(&include_paths, "libavutil/display.h"))
-        .header(search_include(&include_paths, "libavutil/downmix_info.h"))
-        .header(search_include(&include_paths, "libavutil/error.h"))
-        .header(search_include(&include_paths, "libavutil/eval.h"))
-        .header(search_include(&include_paths, "libavutil/fifo.h"))
-        .header(search_include(&include_paths, "libavutil/file.h"))
-        .header(search_include(&include_paths, "libavutil/frame.h"))
-        .header(search_include(&include_paths, "libavutil/hash.h"))
-        .header(search_include(&include_paths, "libavutil/hmac.h"))
-        .header(search_include(&include_paths, "libavutil/imgutils.h"))
-        .header(search_include(&include_paths, "libavutil/lfg.h"))
-        .header(search_include(&include_paths, "libavutil/log.h"))
-        .header(search_include(&include_paths, "libavutil/lzo.h"))
-        .header(search_include(&include_paths, "libavutil/macros.h"))
-        .header(search_include(&include_paths, "libavutil/mathematics.h"))
-        .header(search_include(&include_paths, "libavutil/md5.h"))
-        .header(search_include(&include_paths, "libavutil/mem.h"))
-        .header(search_include(&include_paths, "libavutil/motion_vector.h"))
-        .header(search_include(&include_paths, "libavutil/murmur3.h"))
-        .header(search_include(&include_paths, "libavutil/opt.h"))
-        .header(search_include(&include_paths, "libavutil/parseutils.h"))
-        .header(search_include(&include_paths, "libavutil/pixdesc.h"))
-        .header(search_include(&include_paths, "libavutil/pixfmt.h"))
-        .header(search_include(&include_paths, "libavutil/random_seed.h"))
-        .header(search_include(&include_paths, "libavutil/rational.h"))
-        .header(search_include(&include_paths, "libavutil/replaygain.h"))
-        .header(search_include(&include_paths, "libavutil/ripemd.h"))
-        .header(search_include(&include_paths, "libavutil/samplefmt.h"))
-        .header(search_include(&include_paths, "libavutil/sha.h"))
-        .header(search_include(&include_paths, "libavutil/sha512.h"))
-        .header(search_include(&include_paths, "libavutil/stereo3d.h"))
-        .header(search_include(&include_paths, "libavutil/avstring.h"))
-        .header(search_include(&include_paths, "libavutil/threadmessage.h"))
-        .header(search_include(&include_paths, "libavutil/time.h"))
-        .header(search_include(&include_paths, "libavutil/timecode.h"))
-        .header(search_include(&include_paths, "libavutil/twofish.h"))
-        .header(search_include(&include_paths, "libavutil/avutil.h"))
-        .header(search_include(&include_paths, "libavutil/xtea.h"));
-
-    if env::var("CARGO_FEATURE_POSTPROC").is_ok() {
-        builder = builder.header(search_include(&include_paths, "libpostproc/postprocess.h"));
-    }
-
-    if env::var("CARGO_FEATURE_SWRESAMPLE").is_ok() {
-        builder = builder.header(search_include(&include_paths, "libswresample/swresample.h"));
-    }
-
     if env::var("CARGO_FEATURE_SWSCALE").is_ok() {
-        builder = builder.header(search_include(&include_paths, "libswscale/swscale.h"));
+        println!("cargo:rustc-link-lib={}=swscale", ffmpeg_ty);
+    }
+    if env::var("CARGO_FEATURE_SWRESAMPLE").is_ok() {
+        println!("cargo:rustc-link-lib={}=swresample", ffmpeg_ty);
     }
 
-    // Finish the builder and generate the bindings.
-    let bindings = builder.generate()
-    // Unwrap the Result and panic on failure.
-    .expect("Unable to generate bindings");
+    if target.contains("linux") && !target.contains("android") {
+        println!("cargo:rustc-link-lib=z");
+    }
 
-    // Write the bindings to the $OUT_DIR/bindings.rs file.
-    bindings
-        .write_to_file(output().join("bindings.rs"))
-        .expect("Couldn't write bindings!");
+    if fs::metadata(&lib_dir.join("lib").join("libavutil.a")).is_err() {
+        fs::create_dir_all(&output())
+            .ok()
+            .expect("failed to create build directory");
+        fetch().unwrap();
+        build().unwrap();
+    }
+
+    // Check additional required libraries.
+    {
+        let config_mak = env::var("FFMPEG_CONFIG_PATH")
+            .map(|p| PathBuf::from(p))
+            .unwrap_or_else(|_| {
+                source().join("ffbuild/config.mak")
+            });
+        let file = File::open(config_mak).unwrap();
+        let reader = BufReader::new(file);
+        let extra_libs = reader
+            .lines()
+            .find(|ref line| line.as_ref().unwrap().starts_with("EXTRALIBS"))
+            .map(|line| line.unwrap())
+            .unwrap();
+
+        let linker_args = extra_libs.split('=').last().unwrap().split(' ');
+        let include_libs = linker_args
+            .filter(|v| v.starts_with("-l"))
+            .map(|flag| &flag[2..]);
+
+        for lib in include_libs {
+            println!("cargo:rustc-link-lib={}", lib);
+        }
+    }
 }
