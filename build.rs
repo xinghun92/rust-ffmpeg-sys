@@ -1007,7 +1007,7 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
         println!("cargo:rustc-link-lib={}=swresample", ffmpeg_ty);
     }
 
-    if target.contains("linux") && !target.contains("android") {
+    if env::var("CARGO_FEATURE_BUILD_ZLIB").is_ok() && target.contains("linux") {
         println!("cargo:rustc-link-lib=z");
     }
 
