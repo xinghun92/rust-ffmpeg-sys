@@ -1011,7 +1011,7 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
         println!("cargo:rustc-link-lib=z");
     }
 
-    if fs::metadata(&lib_dir.join("lib").join("libavutil.a")).is_err() {
+    if fs::metadata(&lib_dir.join("lib").join("libavutil.a")).is_err() && fs::metadata(&lib_dir.join("lib").join("avutil.lib")).is_err() {
         fs::create_dir_all(&output())
             .ok()
             .expect("failed to create build directory");
