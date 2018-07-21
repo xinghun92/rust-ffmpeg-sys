@@ -345,7 +345,8 @@ fn check_features(
     let executable = out_dir.join(if cfg!(windows) { "check.exe" } else { "check" });
     // build host executable file
     let mut builder = cc::Build::new();
-    if !cfg!(windows) {
+    let target = env::var("TARGET").unwrap();
+    if !target.contains("msvc") {
         let host = env::var("HOST").unwrap();
         builder.target(&host);
     }
@@ -984,7 +985,6 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
         "cargo:rustc-link-search=native={}",
         lib_dir.join("lib").to_string_lossy()
     );
-
     let ffmpeg_ty = if statik { "static" } else { "dylib" };
 
     // Make sure to link with the ffmpeg libs we built
@@ -1040,8 +1040,14 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
 
         let linker_args = extra_libs.split('=').last().unwrap().split(' ');
         let include_libs = linker_args
-            .filter(|v| v.starts_with("-l"))
-            .map(|flag| &flag[2..]);
+            .filter(|v| v.starts_with("-l") || v.ends_with(".lib"))
+            .map(|flag| {
+                if flag.starts_with("-l") {
+                    &flag[2..]
+                } else {
+                    &flag[..flag.len()-4]
+                }
+            });
 
         for lib in include_libs {
             println!("cargo:rustc-link-lib={}", lib);
