@@ -499,7 +499,7 @@ fn main() {
             .include_paths
     };
 
-    if statik && target.contains("darwin") {
+    if target.contains("darwin") {
         let frameworks = vec![
             "AppKit",
             "AudioToolbox",
@@ -987,28 +987,32 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
     );
     let ffmpeg_ty = if statik { "static" } else { "dylib" };
 
-    // Make sure to link with the ffmpeg libs we built
-    println!("cargo:rustc-link-lib={}=avutil", ffmpeg_ty);
-    if env::var("CARGO_FEATURE_AVCODEC").is_ok() {
-        println!("cargo:rustc-link-lib={}=avcodec", ffmpeg_ty);
-    }
-    if env::var("CARGO_FEATURE_AVFORMAT").is_ok() {
-        println!("cargo:rustc-link-lib={}=avformat", ffmpeg_ty);
-    }
-    if env::var("CARGO_FEATURE_AVFILTER").is_ok() {
-        println!("cargo:rustc-link-lib={}=avfilter", ffmpeg_ty);
-    }
-    if env::var("CARGO_FEATURE_AVDEVICE").is_ok() {
-        println!("cargo:rustc-link-lib={}=avdevice", ffmpeg_ty);
-    }
-    if env::var("CARGO_FEATURE_AVRESAMPLE").is_ok() {
-        println!("cargo:rustc-link-lib={}=avresample", ffmpeg_ty);
-    }
-    if env::var("CARGO_FEATURE_SWSCALE").is_ok() {
-        println!("cargo:rustc-link-lib={}=swscale", ffmpeg_ty);
-    }
-    if env::var("CARGO_FEATURE_SWRESAMPLE").is_ok() {
-        println!("cargo:rustc-link-lib={}=swresample", ffmpeg_ty);
+    if env::var("CARGO_FEATURE_WHOLE_LIB").is_ok() {
+        println!("cargo:rustc-link-lib={}=ffmpeg", ffmpeg_ty);
+    } else {
+        // Make sure to link with the ffmpeg libs we built
+        println!("cargo:rustc-link-lib={}=avutil", ffmpeg_ty);
+        if env::var("CARGO_FEATURE_AVCODEC").is_ok() {
+            println!("cargo:rustc-link-lib={}=avcodec", ffmpeg_ty);
+        }
+        if env::var("CARGO_FEATURE_AVFORMAT").is_ok() {
+            println!("cargo:rustc-link-lib={}=avformat", ffmpeg_ty);
+        }
+        if env::var("CARGO_FEATURE_AVFILTER").is_ok() {
+            println!("cargo:rustc-link-lib={}=avfilter", ffmpeg_ty);
+        }
+        if env::var("CARGO_FEATURE_AVDEVICE").is_ok() {
+            println!("cargo:rustc-link-lib={}=avdevice", ffmpeg_ty);
+        }
+        if env::var("CARGO_FEATURE_AVRESAMPLE").is_ok() {
+            println!("cargo:rustc-link-lib={}=avresample", ffmpeg_ty);
+        }
+        if env::var("CARGO_FEATURE_SWSCALE").is_ok() {
+            println!("cargo:rustc-link-lib={}=swscale", ffmpeg_ty);
+        }
+        if env::var("CARGO_FEATURE_SWRESAMPLE").is_ok() {
+            println!("cargo:rustc-link-lib={}=swresample", ffmpeg_ty);
+        }
     }
 
     if env::var("CARGO_FEATURE_BUILD_ZLIB").is_ok() && target.contains("linux") {
