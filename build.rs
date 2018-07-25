@@ -9,6 +9,7 @@ use std::fs::{self, create_dir, symlink_metadata, File};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::Command;
+use std::collections::HashSet;
 use std::str;
 
 use regex::Regex;
@@ -988,7 +989,11 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
     let ffmpeg_ty = if statik { "static" } else { "dylib" };
 
     if env::var("CARGO_FEATURE_WHOLE_LIB").is_ok() {
-        println!("cargo:rustc-link-lib={}=ffmpeg", ffmpeg_ty);
+        let ffmpeg_lib_name = env::var("FFMPEG_LIB_NAME")
+            .unwrap_or_else(|_| {
+                "ffmpeg".to_owned()
+            });
+        println!("cargo:rustc-link-lib={}={}", ffmpeg_ty, ffmpeg_lib_name);
     } else {
         // Make sure to link with the ffmpeg libs we built
         println!("cargo:rustc-link-lib={}=avutil", ffmpeg_ty);
@@ -1019,7 +1024,7 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
         println!("cargo:rustc-link-lib=z");
     }
 
-    if fs::metadata(&lib_dir.join("lib").join("libavutil.a")).is_err() && fs::metadata(&lib_dir.join("lib").join("avutil.lib")).is_err() {
+    if env::var("CARGO_FEATURE_BUILD").is_ok() {
         fs::create_dir_all(&output())
             .ok()
             .expect("failed to create build directory");
@@ -1043,7 +1048,7 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
             .unwrap();
 
         let linker_args = extra_libs.split('=').last().unwrap().split(' ');
-        let include_libs = linker_args
+        let include_libs: HashSet<_> = linker_args
             .filter(|v| v.starts_with("-l") || v.ends_with(".lib"))
             .map(|flag| {
                 if flag.starts_with("-l") {
@@ -1051,7 +1056,7 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
                 } else {
                     &flag[..flag.len()-4]
                 }
-            });
+            }).collect();
 
         for lib in include_libs {
             println!("cargo:rustc-link-lib={}", lib);
