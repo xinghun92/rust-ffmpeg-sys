@@ -7,7 +7,7 @@ extern crate regex;
 use std::env;
 use std::fs::{self, create_dir, symlink_metadata, File};
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::collections::HashSet;
 use std::str;
@@ -1062,4 +1062,30 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
             println!("cargo:rustc-link-lib={}", lib);
         }
     }
+
+    if env::var("CARGO_FEATURE_RUNNABLE").is_ok() {
+        build_runnable(lib_dir);
+        println!("cargo:rustc-link-lib={}", FFMPEG_RUN);
+    }
+}
+
+const FFMPEG_RUN: &str = "ffmpeg_run";
+
+pub fn build_runnable(lib_dir: &PathBuf) {
+    let mut builder = cc::Build::new();
+    const INCLUDE: &str = "include";
+    let include_dir = lib_dir.join(INCLUDE);
+    let include_dir = include_dir.to_str().expect("Parse inlcude dir failed");
+    let lib_dir = lib_dir.to_str().expect("Parse lib dir failed");
+
+    const SOURCE_DIR: &str = "ffmpeg_run";
+    let source_dir = Path::new(SOURCE_DIR);
+    builder.include("FFmpeg")
+        .include(lib_dir)
+        .include(include_dir)
+        .file(source_dir.join("cmdutils.c"))
+        .file(source_dir.join("ffmpeg.c"))
+        .file(source_dir.join("ffmpeg_filter.c"))
+        .file(source_dir.join("ffmpeg_opt.c"))
+        .compile(FFMPEG_RUN);
 }
