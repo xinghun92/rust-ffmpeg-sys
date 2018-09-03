@@ -10,7 +10,6 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 mod avutil;
 pub use avutil::*;
 
-#[cfg(features = "runnable")]
 extern "C" {
     pub fn run(
         argc: ::std::os::raw::c_int,
@@ -26,7 +25,7 @@ mod tests {
         use std::str::FromStr;
         use std::os::raw::c_char;
 
-        let args = vec!["ffmpeg", "-i", "/Users/wangsijie/Downloads/New_IMG_0431.MOV", "-vframes", "1", "-f", "image2", "test_image.jpg"];
+        let args = vec!["ffmpeg", "-i", "/Users/wangsijie/Downloads/down1234-下午4.42.04.mpeg", "-vframes", "1", "-f", "image2", "test_image.png"];
         let argc = args.len() as ::std::os::raw::c_int;
 
         let mut c_args = Vec::new();

@@ -444,7 +444,7 @@ fn main() {
     let statik = env::var("CARGO_FEATURE_STATIC").is_ok();
     let target = env::var("TARGET").unwrap();
 
-    let include_paths: Vec<PathBuf> = if env::var("CARGO_FEATURE_BUILD").is_ok() {
+    let mut include_paths: Vec<PathBuf> = if env::var("CARGO_FEATURE_BUILD").is_ok() {
         link_ffmpeg(&search());
 
         vec![search().join("include")]
@@ -524,6 +524,7 @@ fn main() {
         }
     }
 
+    include_paths.push(env::current_dir().unwrap().join("FFmpeg"));
     check_features(
         include_paths.clone(),
         &vec![
@@ -1065,7 +1066,6 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
 
     if env::var("CARGO_FEATURE_RUNNABLE").is_ok() {
         build_runnable(lib_dir);
-        println!("cargo:rustc-link-lib={}", FFMPEG_RUN);
     }
 }
 
