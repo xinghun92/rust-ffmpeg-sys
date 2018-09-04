@@ -28,7 +28,6 @@ static = []
 build  = ["static"]
 buildtime-bindgen = ["static"]
 whole_lib = []
-runnable = []
 
 # licensing
 build-license-gpl      = ["build"]

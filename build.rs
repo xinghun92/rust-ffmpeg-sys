@@ -1064,9 +1064,7 @@ fn link_ffmpeg(lib_dir: &PathBuf) {
         }
     }
 
-    if env::var("CARGO_FEATURE_RUNNABLE").is_ok() {
-        build_runnable(lib_dir);
-    }
+    build_runnable(lib_dir);
 }
 
 const FFMPEG_RUN: &str = "ffmpeg_run";
