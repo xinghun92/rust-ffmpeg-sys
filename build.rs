@@ -1078,7 +1078,7 @@ pub fn build_runnable(lib_dir: &PathBuf) {
 
     const SOURCE_DIR: &str = "ffmpeg_run";
     let source_dir = Path::new(SOURCE_DIR);
-    let ffmpeg_dir = env::current_dir().unwrap().join("FFmpeg");
+    let ffmpeg_dir = env::current_dir().unwrap().join("FFmpeg-n3.4.1");
     builder.include(ffmpeg_dir)
         .include(lib_dir)
         .include(include_dir)
